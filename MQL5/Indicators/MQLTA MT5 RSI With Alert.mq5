@@ -1,12 +1,12 @@
 #property link          "https://www.earnforex.com/metatrader-indicators/moving-average-crossover-alert/"
-#property version       "1.05"
-#property strict
-#property copyright     "EarnForex.com - 2020-2023"
+#property version       "1.06"
+
+#property copyright     "EarnForex.com - 2020-2024"
 #property description   "The RSI indicator with alerts."
-#property description   " "
-#property description   "WARNING: You use this indicator at your own risk."
-#property description   "The creator of these indicator cannot be held responsible for damage or loss."
-#property description   " "
+#property description   ""
+#property description   "WARNING: Use this software at your own risk."
+#property description   "The creator of this indicator cannot be held responsible for any damage or loss."
+#property description   ""
 #property description   "Find more on www.EarnForex.com"
 #property icon          "\\Files\\EF-Icon-64x64px.ico"
 
@@ -27,22 +27,23 @@
 
 enum ENUM_TRADE_SIGNAL
 {
-    SIGNAL_BUY = 1,     // BUY
-    SIGNAL_SELL = -1,   // SELL
-    SIGNAL_NEUTRAL = 0, // NEUTRAL
-    SIGNAL_HLINE = 2    // HORIZONTAL LINE CROSS
+    SIGNAL_BUY = 1,     // Buy
+    SIGNAL_SELL = -1,   // Sell
+    SIGNAL_NEUTRAL = 0, // Neutral
+    SIGNAL_HLINE = 2    // Horizontal Line Cross
 };
 
 enum ENUM_CANDLE_TO_CHECK
 {
-    CURRENT_CANDLE = 0, // CURRENT CANDLE
-    CLOSED_CANDLE = 1   // PREVIOUS CANDLE
+    CURRENT_CANDLE, // Current Candle
+    CLOSED_CANDLE   // Previous Candle
 };
 
 enum ENUM_ALERT_SIGNAL
 {
-    RSI_BREAK_OUT = 0, // RSI BREAKS OUT THE LIMITS
-    RSI_COMES_IN = 1   // RSI RETURNS IN THE LIMITS
+    RSI_BREAK_OUT, // RSI Breaks out of Limits
+    RSI_COMES_IN,  // RSI Returns to the Limits
+    RSI_COMES_IN_AFTER_REACHING_OUT // RSI Returns to the Limits After Reaching Target
 };
 
 input string Comment1 = "========================";        // MQLTA RSI With Alert
@@ -52,14 +53,17 @@ input int RSIPeriod = 14;                                  // RSI Period
 input int RSIHighLimit = 70;                               // RSI Overbought Limit
 input int RSILowLimit = 30;                                // RSI Oversold Limit
 input ENUM_APPLIED_PRICE RSIAppliedPrice = PRICE_CLOSE;    // RSI Applied Price
-input ENUM_ALERT_SIGNAL AlertSignal = RSI_COMES_IN;        // Alert Signal When
+input int BarsToScan = 500;                                // Number Of Candles To Analyze (0 = All)
 input ENUM_CANDLE_TO_CHECK CandleToCheck = CURRENT_CANDLE; // Candle To Use For Analysis
-input int BarsToScan = 500;                                // Number Of Candles To Analyse
+input ENUM_ALERT_SIGNAL AlertSignal = RSI_COMES_IN;        // Alert Signal When
+input int RSITopTarget = 99;                               // RSI Top Target
+input int RSILowTarget = 1;                                // RSI Low Target
 input string Comment_3 = "====================";           // Notification Options
 input bool EnableNotify = false;                           // Enable Notifications Feature
 input bool SendAlert = true;                               // Send Alert Notification
 input bool SendApp = false;                                // Send Notification to Mobile
 input bool SendEmail = false;                              // Send Notification via Email
+input int WaitTimeNotify = 5;                              // Wait Time Between Notifications (Seconds)
 input string Comment_4 = "====================";           // Drawing Options
 input bool EnableDrawArrows = true;                        // Draw Signal Arrows
 input int ArrowBuy = 241;                                  // Buy Arrow Code
@@ -70,10 +74,6 @@ input color ArrowSellColor = clrRed;                       // Sell Arrow Color
 
 double BufferMain[];
 int BufferMainHandle;
-
-double Open[], Close[], High[], Low[];
-datetime Time[];
-
 datetime LastNotificationTime;
 ENUM_TRADE_SIGNAL LastNotificationDirection;
 double LineLevel = 0; // For horizontal line cross signals.
@@ -114,7 +114,7 @@ int OnCalculate(const int rates_total,
     if (counted_bars < 0) return -1;
     if (counted_bars > 0) counted_bars--;
     int limit = rates_total - counted_bars;
-    if (limit > BarsToScan)
+    if ((BarsToScan > 0) && (limit > BarsToScan))
     {
         limit = BarsToScan;
         if (rates_total < BarsToScan + RSIPeriod) limit = rates_total - RSIPeriod;
@@ -125,15 +125,6 @@ int OnCalculate(const int rates_total,
     {
         Print("Failed to create the indicator! Error: ", GetLastErrorText(GetLastError()), " - ", GetLastError());
         return 0;
-    }
-
-    for (int i = limit - 1; (i >= 0) && (!IsStopped()); i--)
-    {
-        Open[i] = iOpen(Symbol(), PERIOD_CURRENT, i);
-        Low[i] = iLow(Symbol(), PERIOD_CURRENT, i);
-        High[i] = iHigh(Symbol(), PERIOD_CURRENT, i);
-        Close[i] = iClose(Symbol(), PERIOD_CURRENT, i);
-        Time[i] = iTime(Symbol(), PERIOD_CURRENT, i);
     }
 
     if ((IsNewCandle) || (prev_calculated == 0))
@@ -178,11 +169,6 @@ void CleanChart()
 void InitialiseHandles()
 {
     BufferMainHandle = iRSI(Symbol(), PERIOD_CURRENT, RSIPeriod, RSIAppliedPrice);
-    ArrayResize(Open, BarsToScan);
-    ArrayResize(High, BarsToScan);
-    ArrayResize(Low, BarsToScan);
-    ArrayResize(Close, BarsToScan);
-    ArrayResize(Time, BarsToScan);
 }
 
 void InitialiseBuffers()
@@ -190,9 +176,18 @@ void InitialiseBuffers()
     IndicatorSetInteger(INDICATOR_DIGITS, 2);
     ArraySetAsSeries(BufferMain, true);
     SetIndexBuffer(0, BufferMain, INDICATOR_DATA);
+    IndicatorSetInteger(INDICATOR_LEVELS, 2);
     IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, (double)RSILowLimit);
     IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, (double)RSIHighLimit);
     PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, RSIPeriod);
+    if (AlertSignal == RSI_COMES_IN_AFTER_REACHING_OUT) // If required mark the target levels.
+    {
+        IndicatorSetInteger(INDICATOR_LEVELS, 4);
+        IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, (double)RSILowLimit);
+        IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, (double)RSIHighLimit);
+        IndicatorSetDouble(INDICATOR_LEVELVALUE, 2, (double)RSITopTarget);
+        IndicatorSetDouble(INDICATOR_LEVELVALUE, 3, (double)RSILowTarget);
+    }
 }
 
 datetime NewCandleTime = TimeCurrent();
@@ -206,19 +201,42 @@ bool CheckIfNewCandle()
     }
 }
 
-//Check if it is a trade Signla 0 - Neutral, 1 - Buy, -1 - Sell
+// Check if it is a trade signal: 0 = Neutral, 1 = Buy, -1 = Sell.
 ENUM_TRADE_SIGNAL IsSignal(int i)
 {
     int j = i + Shift;
     if (AlertSignal == RSI_BREAK_OUT)
     {
         if ((BufferMain[j + 1] < RSIHighLimit) && (BufferMain[j] > RSIHighLimit)) return SIGNAL_BUY;
-        if ((BufferMain[j + 1] > RSILowLimit) && (BufferMain[j] < RSILowLimit)) return SIGNAL_SELL;
+        else if ((BufferMain[j + 1] > RSILowLimit) && (BufferMain[j] < RSILowLimit)) return SIGNAL_SELL;
     }
-    if (AlertSignal == RSI_COMES_IN)
+    else if (AlertSignal == RSI_COMES_IN)
     {
         if ((BufferMain[j + 1] < RSILowLimit) && (BufferMain[j] > RSILowLimit)) return SIGNAL_BUY;
-        if ((BufferMain[j + 1] > RSIHighLimit) && (BufferMain[j] < RSIHighLimit)) return SIGNAL_SELL;
+        else if ((BufferMain[j + 1] > RSIHighLimit) && (BufferMain[j] < RSIHighLimit)) return SIGNAL_SELL;
+    }
+    else if (AlertSignal == RSI_COMES_IN_AFTER_REACHING_OUT)
+    {
+        int _BarsToScan = BarsToScan;
+        if ((_BarsToScan == 0) || (_BarsToScan > iBars(Symbol(), Period()))) _BarsToScan = iBars(Symbol(), Period());
+        if ((BufferMain[j + 1] < RSILowLimit) && (BufferMain[j] > RSILowLimit))
+        {
+            // Check whether the target has been reached before this return to the range.
+            for (int k = j + 1; k < _BarsToScan; k++)
+            {
+                if (BufferMain[k] > RSILowLimit) break; // Didn't reach the target during this breakout.
+                if (BufferMain[k] <= RSILowTarget) return SIGNAL_BUY;
+            }
+        }
+        if ((BufferMain[j + 1] > RSIHighLimit) && (BufferMain[j] < RSIHighLimit))
+        {
+            // Check whether the target has been reached before this return to the range.
+            for (int k = j + 1; k < _BarsToScan; k++)
+            {
+                if (BufferMain[k] < RSIHighLimit) break; // Didn't reach the target during this breakout.
+                if (BufferMain[k] >= RSITopTarget) return SIGNAL_SELL;
+            }
+        }
     }
 
     // Find horizontal lines in the indicator's subwindow, check for crosses.
@@ -239,7 +257,14 @@ void NotifyHit()
 {
     if (!EnableNotify) return;
     if ((!SendAlert) && (!SendApp) && (!SendEmail)) return;
-    if ((CandleToCheck == CLOSED_CANDLE) && (Time[0] <= LastNotificationTime)) return;
+    if (CandleToCheck == CLOSED_CANDLE)
+    {
+        if (iTime(Symbol(), Period(), 0) <= LastNotificationTime) return;
+    }
+    else // Current candle.
+    {
+        if (TimeCurrent() - LastNotificationTime < WaitTimeNotify) return; // Notifications are coming too fast.
+    }
     ENUM_TRADE_SIGNAL Signal = IsSignal(0);
     if (Signal == SIGNAL_NEUTRAL)
     {
@@ -268,7 +293,7 @@ void NotifyHit()
     {
         if (!SendNotification(AppText)) Print("Error sending notification " + IntegerToString(GetLastError()));
     }
-    LastNotificationTime = Time[0];
+    LastNotificationTime = TimeCurrent();
     LastNotificationDirection = Signal;
 }
 
@@ -278,11 +303,6 @@ void DrawArrows(int limit)
     {
         DrawArrow(i);
     }
-}
-
-void RemoveArrows()
-{
-    ObjectsDeleteAll(ChartID(), IndicatorName + "-ARWS-");
 }
 
 void DrawArrow(int i)
@@ -299,7 +319,7 @@ void DrawArrow(int i)
     string ArrowDesc = "";
     if (Signal == SIGNAL_BUY)
     {
-        ArrowPrice = Low[i];
+        ArrowPrice = iLow(Symbol(), Period(), i);
         ArrowType = (ENUM_OBJECT)ArrowBuy;
         ArrowColor = ArrowBuyColor;
         ArrowAnchor = ANCHOR_TOP;
@@ -307,7 +327,7 @@ void DrawArrow(int i)
     }
     if (Signal == SIGNAL_SELL)
     {
-        ArrowPrice = High[i];
+        ArrowPrice = iHigh(Symbol(), Period(), i);
         ArrowType = (ENUM_OBJECT)ArrowSell;
         ArrowColor = ArrowSellColor;
         ArrowAnchor = ANCHOR_BOTTOM;
@@ -342,7 +362,7 @@ void CleanUpOldArrows()
         string ArrowName = ObjectName(ChartID(), i, 0, OBJ_ARROW);
         datetime time = (datetime)ObjectGetInteger(ChartID(), ArrowName, OBJPROP_TIME);
         int bar = iBarShift(Symbol(), Period(), time);
-        if (bar >= BarsToScan) ObjectDelete(ChartID(), ArrowName);
+        if ((BarsToScan > 0) && (bar >= BarsToScan)) ObjectDelete(ChartID(), ArrowName);
     }
 }
 //+------------------------------------------------------------------+
