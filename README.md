@@ -9,6 +9,6 @@ It is a non-repainting indicator.
 ![RSI with Alert shows some example arrows on this EUR/USD chart](https://github.com/EarnForex/RSI-with-Alert/blob/main/README_Images/rsi-alert-example-signals-eurusd.png)
 
 A detailed description of the indicator can be found here:
-https://www.earnforex.com/metatrader-indicators/rsi-alert/
+https://www.earnforex.com/indicators/rsi-alert/
 
 Any contributions to the code are welcome!
