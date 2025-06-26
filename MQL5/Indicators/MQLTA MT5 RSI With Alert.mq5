@@ -1,7 +1,7 @@
-#property link          "https://www.earnforex.com/metatrader-indicators/moving-average-crossover-alert/"
-#property version       "1.06"
+#property link          "https://www.earnforex.com/indicators/rsi-alert/"
+#property version       "1.07"
 
-#property copyright     "EarnForex.com - 2020-2024"
+#property copyright     "EarnForex.com - 2020-2025"
 #property description   "The RSI indicator with alerts."
 #property description   ""
 #property description   "WARNING: Use this software at your own risk."
@@ -63,6 +63,8 @@ input bool EnableNotify = false;                           // Enable Notificatio
 input bool SendAlert = true;                               // Send Alert Notification
 input bool SendApp = false;                                // Send Notification to Mobile
 input bool SendEmail = false;                              // Send Notification via Email
+input bool SendSound = false;                              // Sound Alert
+input string SoundFile = "alert.wav";                      // Sound File
 input int WaitTimeNotify = 5;                              // Wait Time Between Notifications (Seconds)
 input string Comment_4 = "====================";           // Drawing Options
 input bool EnableDrawArrows = true;                        // Draw Signal Arrows
@@ -71,6 +73,8 @@ input int ArrowSell = 242;                                 // Sell Arrow Code
 input int ArrowSize = 3;                                   // Arrow Size (1-5)
 input color ArrowBuyColor = clrGreen;                      // Buy Arrow Color
 input color ArrowSellColor = clrRed;                       // Sell Arrow Color
+input color IndicatorLevelsColor = clrSilver;              // Indicator Levels Color
+input ENUM_LINE_STYLE IndicatorLevelsStyle = STYLE_DOT;    // Indicator Levels Style
 
 double BufferMain[];
 int BufferMainHandle;
@@ -143,6 +147,7 @@ int OnCalculate(const int rates_total,
 void OnDeinit(const int reason)
 {
     CleanChart();
+    ChartRedraw();
 }
 
 void OnInitInitialization()
@@ -176,18 +181,26 @@ void InitialiseBuffers()
     IndicatorSetInteger(INDICATOR_DIGITS, 2);
     ArraySetAsSeries(BufferMain, true);
     SetIndexBuffer(0, BufferMain, INDICATOR_DATA);
-    IndicatorSetInteger(INDICATOR_LEVELS, 2);
+    IndicatorSetInteger(INDICATOR_LEVELS, 2); // This resets all indicator level settings.
     IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, (double)RSILowLimit);
     IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, (double)RSIHighLimit);
     PlotIndexSetInteger(0, PLOT_DRAW_BEGIN, RSIPeriod);
     if (AlertSignal == RSI_COMES_IN_AFTER_REACHING_OUT) // If required mark the target levels.
     {
-        IndicatorSetInteger(INDICATOR_LEVELS, 4);
+        IndicatorSetInteger(INDICATOR_LEVELS, 4); // This resets all indicator level settings.
         IndicatorSetDouble(INDICATOR_LEVELVALUE, 0, (double)RSILowLimit);
         IndicatorSetDouble(INDICATOR_LEVELVALUE, 1, (double)RSIHighLimit);
         IndicatorSetDouble(INDICATOR_LEVELVALUE, 2, (double)RSITopTarget);
         IndicatorSetDouble(INDICATOR_LEVELVALUE, 3, (double)RSILowTarget);
+    IndicatorSetInteger(INDICATOR_LEVELCOLOR, 2, IndicatorLevelsColor);
+    IndicatorSetInteger(INDICATOR_LEVELSTYLE, 2, IndicatorLevelsStyle);
+    IndicatorSetInteger(INDICATOR_LEVELCOLOR, 3, IndicatorLevelsColor);
+    IndicatorSetInteger(INDICATOR_LEVELSTYLE, 3, IndicatorLevelsStyle);
     }
+    IndicatorSetInteger(INDICATOR_LEVELCOLOR, 0, IndicatorLevelsColor);
+    IndicatorSetInteger(INDICATOR_LEVELSTYLE, 0, IndicatorLevelsStyle);
+    IndicatorSetInteger(INDICATOR_LEVELCOLOR, 1, IndicatorLevelsColor);
+    IndicatorSetInteger(INDICATOR_LEVELSTYLE, 1, IndicatorLevelsStyle);
 }
 
 datetime NewCandleTime = TimeCurrent();
@@ -256,7 +269,7 @@ ENUM_TRADE_SIGNAL IsSignal(int i)
 void NotifyHit()
 {
     if (!EnableNotify) return;
-    if ((!SendAlert) && (!SendApp) && (!SendEmail)) return;
+    if ((!SendAlert) && (!SendApp) && (!SendEmail) && (!SendSound)) return;
     if (CandleToCheck == CLOSED_CANDLE)
     {
         if (iTime(Symbol(), Period(), 0) <= LastNotificationTime) return;
@@ -293,6 +306,10 @@ void NotifyHit()
     {
         if (!SendNotification(AppText)) Print("Error sending notification " + IntegerToString(GetLastError()));
     }
+    if (SendSound)
+    {
+        PlaySound(SoundFile);
+    }
     LastNotificationTime = TimeCurrent();
     LastNotificationDirection = Signal;
 }
@@ -325,7 +342,7 @@ void DrawArrow(int i)
         ArrowAnchor = ANCHOR_TOP;
         ArrowDesc = "BUY";
     }
-    if (Signal == SIGNAL_SELL)
+    else if (Signal == SIGNAL_SELL)
     {
         ArrowPrice = iHigh(Symbol(), Period(), i);
         ArrowType = (ENUM_OBJECT)ArrowSell;
@@ -343,7 +360,6 @@ void DrawArrow(int i)
     ObjectSetInteger(0, ArrowName, OBJPROP_STYLE, STYLE_SOLID);
     ObjectSetInteger(0, ArrowName, OBJPROP_BGCOLOR, ArrowColor);
     ObjectSetString(0, ArrowName, OBJPROP_TEXT, ArrowDesc);
-
 }
 
 void RemoveArrowCurr()
@@ -351,6 +367,7 @@ void RemoveArrowCurr()
     datetime ArrowDate = iTime(Symbol(), 0, 0);
     string ArrowName = IndicatorName + "-ARWS-" + IntegerToString(ArrowDate);
     ObjectDelete(0, ArrowName);
+    ChartRedraw();
 }
 
 // Delete all arrows that are older than BarsToScan bars.
@@ -364,5 +381,6 @@ void CleanUpOldArrows()
         int bar = iBarShift(Symbol(), Period(), time);
         if ((BarsToScan > 0) && (bar >= BarsToScan)) ObjectDelete(ChartID(), ArrowName);
     }
+    ChartRedraw();
 }
 //+------------------------------------------------------------------+

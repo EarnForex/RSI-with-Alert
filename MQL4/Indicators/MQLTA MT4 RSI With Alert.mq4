@@ -1,12 +1,12 @@
-#property link          "https://www.earnforex.com/metatrader-indicators/rsi-alert/"
-#property version       "1.06"
+#property link          "https://www.earnforex.com/indicators/rsi-alert/"
+#property version       "1.07"
 #property strict
-#property copyright     "EarnForex.com - 2020-2024"
+#property copyright     "EarnForex.com - 2020-2025"
 #property description   "The RSI indicator with alerts."
-#property description   " "
+#property description   ""
 #property description   "WARNING: Use this software at your own risk."
 #property description   "The creator of this indicator cannot be held responsible for any damage or loss."
-#property description   " "
+#property description   ""
 #property description   "Find more on www.EarnForex.com"
 #property icon          "\\Files\\EF-Icon-64x64px.ico"
 
@@ -55,6 +55,8 @@ input bool EnableNotify = false;                           // Enable Notificatio
 input bool SendAlert = true;                               // Send Alert Notification
 input bool SendApp = false;                                // Send Notification to Mobile
 input bool SendEmail = false;                              // Send Notification via Email
+input bool SendSound = false;                              // Sound Alert
+input string SoundFile = "alert.wav";                      // Sound File
 input int WaitTimeNotify = 5;                              // Wait Time Between Notifications (Seconds)
 input string Comment_4 = "====================";           // Drawing Options
 input bool EnableDrawArrows = true;                        // Draw Signal Arrows
@@ -183,6 +185,10 @@ void InitialiseBuffers()
         SetLevelValue(2, (double)RSITopTarget);
         SetLevelValue(3, (double)RSILowTarget);
     }
+    else
+    {
+        IndicatorSetInteger(INDICATOR_LEVELS, 2);
+    }
 }
 
 datetime NewCandleTime = TimeCurrent();
@@ -251,7 +257,7 @@ ENUM_TRADE_SIGNAL IsSignal(int i)
 void NotifyHit()
 {
     if (!EnableNotify) return;
-    if ((!SendAlert) && (!SendApp) && (!SendEmail)) return;
+    if ((!SendAlert) && (!SendApp) && (!SendEmail) && (!SendSound)) return;
     if (CandleToCheck == CLOSED_CANDLE)
     {
         if (Time[0] <= LastNotificationTime) return;
@@ -288,6 +294,10 @@ void NotifyHit()
     {
         if (!SendNotification(AppText)) Print("Error sending notification " + IntegerToString(GetLastError()));
     }
+    if (SendSound)
+    {
+        PlaySound(SoundFile);
+    }
     LastNotificationTime = TimeCurrent();
     LastNotificationDirection = Signal;
 }
@@ -321,7 +331,7 @@ void DrawArrow(int i)
         ArrowAnchor = ANCHOR_TOP;
         ArrowDesc = "BUY";
     }
-    if (Signal == SIGNAL_SELL)
+    else if (Signal == SIGNAL_SELL)
     {
         ArrowPrice = High[i];
         ArrowType = ArrowSell;
